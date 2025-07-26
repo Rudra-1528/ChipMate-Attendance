@@ -209,14 +209,18 @@
 
             onAuthStateChanged(auth, user => {
                 if (user) {
+                    // This is the critical fix: only attach listeners and load data AFTER auth is confirmed.
                     if (!listenersAttached) {
                         attachEventListeners();
                         listenersAttached = true;
                     }
                     loadCredentialsAndData();
                 } else {
-                    if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
-                    else signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
+                    if (initialAuthToken) {
+                        signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
+                    } else {
+                        signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
+                    }
                 }
             });
         }
