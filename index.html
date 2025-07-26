@@ -77,7 +77,7 @@
         <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
             <h2 class="text-xl font-semibold text-slate-700">Attendance Sheet</h2>
             <div id="controlsContainer" class="flex items-center gap-2">
-                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>Admin Login</button>
+                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>Loading...</button>
                 <div id="adminControls" class="flex items-center gap-2" style="display: none;">
                     <button id="logoutBtn" class="bg-gray-500 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-gray-600">Logout</button>
                     <button id="changePasswordBtn" class="bg-yellow-500 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-yellow-600">Change Password</button>
@@ -145,7 +145,6 @@
         </div>
     </div>
     
-    <!-- Confirmation Modal -->
     <div id="confirmModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
         <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
             <h3 class="text-xl font-semibold mb-4">Are you sure?</h3>
@@ -170,7 +169,6 @@
         let app, auth, db;
         let isUserAdmin = false;
         let adminPassword = "";
-        let listenersAttached = false; // Flag to ensure listeners are attached only once
 
         const students = [
             { id: 7, name: "Arpit Kumar" }, { id: 10, name: "Bichitra Sharma" },
@@ -201,18 +199,17 @@
         const getAttendanceRef = () => doc(db, "artifacts", appId, "public/data/club/attendance");
 
         // --- Firebase & Data Logic ---
-        async function initFirebase() {
+        async function startApp() {
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             auth = getAuth(app);
+            
+            attachEventListeners(); // Attach all listeners once
+            renderTable(); // Initial render with no data
 
             onAuthStateChanged(auth, user => {
                 if (user) {
                     loadCredentialsAndData();
-                    if (!listenersAttached) {
-                        attachEventListeners();
-                        listenersAttached = true;
-                    }
                 } else {
                     if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
                     else signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
@@ -231,6 +228,7 @@
                     await setDoc(credRef, { password: adminPassword });
                 }
                 loginBtn.disabled = false;
+                loginBtn.textContent = "Admin Login";
             } catch (error) {
                 console.error("Error loading credentials:", error);
                 loginBtn.textContent = "Login Disabled";
@@ -335,7 +333,6 @@
                 }
                 confirmModal.classList.add('hidden');
             });
-
 
             // Table actions (event delegation on the whole table)
             tableWrapper.addEventListener('click', (e) => {
@@ -463,8 +460,7 @@
         function formatDate(d) { return `${d.slice(8,10)}/${d.slice(5,7)}/${d.slice(2,4)}`; }
         
         // --- Initial Load ---
-        renderTable(); 
-        initFirebase();
+        startApp();
     </script>
 </body>
 </html>
