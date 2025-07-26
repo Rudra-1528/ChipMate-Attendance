@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChipMate Club - Interactive Attendance Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        table {
+            width: 100%;
+            min-width: 800px;
+        }
+        th, td {
+            white-space: nowrap;
+            padding: 12px 16px;
+        }
+        .status-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid transparent;
+            transition: all 0.2s ease-in-out;
+        }
+        .status-btn.editable {
+             cursor: pointer;
+        }
+        .status-p {
+            background-color: #dcfce7;
+            color: #166534;
+            border-color: #22c55e;
+        }
+        .status-a {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border-color: #ef4444;
+        }
+        .status-empty {
+             background-color: #e2e8f0;
+             color: #475569;
+        }
+        .status-empty.editable:hover {
+            background-color: #cbd5e1;
+        }
+        .delete-date-btn {
+            background: none; border: none; cursor: pointer;
+            margin-left: 8px; font-size: 1rem; color: #94a3b8;
+            transition: color 0.2s ease;
+        }
+        .delete-date-btn:hover { color: #ef4444; }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <!-- Header -->
+        <div class="bg-white p-6 rounded-2xl shadow-md mb-6 border border-slate-200">
+            <h1 class="text-3xl font-bold text-slate-900">ChipMate Club</h1>
+            <p class="text-slate-600 mt-1">Department: SASET</p>
+            <p class="text-slate-500 text-sm">Semester: 3</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
+            <h2 class="text-xl font-semibold text-slate-700">Attendance Sheet</h2>
+            <div class="flex items-center gap-2">
+                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700">Admin Login</button>
+                <div id="adminControls" class="flex items-center gap-2" style="display: none;">
+                    <button id="downloadBtn" class="bg-green-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-green-700">Download CSV</button>
+                    <button id="addDateBtn" class="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-indigo-700">Add Date</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="loading" class="text-center py-10"><p class="text-slate-500">Loading attendance data...</p></div>
+
+        <div id="tableWrapper" class="table-container bg-white rounded-2xl shadow-md border border-slate-200 hidden">
+            <table class="min-w-full divide-y divide-slate-200">
+                <thead id="tableHeader" class="bg-slate-50"></thead>
+                <tbody id="tableBody" class="divide-y divide-slate-200"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="dateModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+            <h3 class="text-xl font-semibold mb-4">Add New Date</h3>
+            <input type="date" id="dateInput" class="w-full p-2 border border-slate-300 rounded-lg">
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancelDateBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancel</button>
+                <button id="saveDateBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Add Date</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="loginModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+            <h3 class="text-xl font-semibold mb-4">Admin Login</h3>
+            <label for="passwordInput" class="block text-sm font-medium text-slate-700">Password:</label>
+            <input type="password" id="passwordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+            <p id="loginError" class="text-red-500 text-sm mt-2 hidden">Incorrect password.</p>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancelLoginBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancel</button>
+                <button id="submitLoginBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "dummy", authDomain: "dummy.firebaseapp.com", projectId: "dummy" };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'chipmate-attendance-default';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, auth, db;
+        let isUserAdmin = false;
+
+        const students = [
+            { id: 7, name: "Arpit Kumar" }, { id: 10, name: "Bichitra Sharma" },
+            { id: 11, name: "CHOUDHARY RAKESH RATANARM" }, { id: 18, name: "Harshit" },
+            { id: 21, name: "Kavin.K.K" }, { id: 23, name: "Krishna Patel" },
+            { id: 26, name: "Manojit Das" }, { id: 32, name: "OM" },
+            { id: 35, name: "Priyanshu Raj" }, { id: 37, name: "Rahul Singh" },
+            { id: 38, name: "Rohit Sharma" }, { id: 39, name: "Rudra Pratap Singh" },
+            { id: 47, name: "Srushti Tanna" }, { id: 56, name: "Vishal Mahatha" },
+            { id: 58, name: "Vishvjeet" }
+        ].sort((a, b) => a.name.localeCompare(b.name));
+        
+        let attendanceData = {};
+
+        const adminControls = document.getElementById('adminControls');
+        const loginBtn = document.getElementById('loginBtn');
+        const tableHeader = document.getElementById('tableHeader');
+        const tableBody = document.getElementById('tableBody');
+        const loadingDiv = document.getElementById('loading');
+        const tableWrapper = document.getElementById('tableWrapper');
+        const dateModal = document.getElementById('dateModal');
+        const loginModal = document.getElementById('loginModal');
+
+        async function initFirebase() {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            onAuthStateChanged(auth, user => {
+                if (user) {
+                    loadAttendanceData();
+                } else {
+                    if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
+                    else signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
+                }
+            });
+        }
+
+        function loadAttendanceData() {
+            const docRef = doc(db, "artifacts", appId, "public/data", "attendanceSheet");
+            onSnapshot(docRef, (docSnap) => {
+                attendanceData = docSnap.exists() ? docSnap.data().records || {} : {};
+                // This is the key fix: render the table every time data changes.
+                renderTable();
+                loadingDiv.classList.add('hidden');
+                tableWrapper.classList.remove('hidden');
+            });
+        }
+
+        async function saveAttendanceData() {
+            if (!isUserAdmin) return;
+            const docRef = doc(db, "artifacts", appId, "public/data", "attendanceSheet");
+            await setDoc(docRef, { records: attendanceData }, { merge: true });
+        }
+
+        function setupUI() {
+            if (isUserAdmin) {
+                adminControls.style.display = 'flex';
+                loginBtn.style.display = 'none';
+            } else {
+                adminControls.style.display = 'none';
+                loginBtn.style.display = 'block';
+            }
+            // Re-render the table to show/hide admin controls like the delete button
+            renderTable();
+        }
+
+        function renderTable() {
+            const dates = Object.keys(attendanceData).sort();
+            tableHeader.innerHTML = `
+                <tr>
+                    <th class="sticky left-0 bg-slate-50 z-10 text-left text-sm font-semibold text-slate-900">Sr. No.</th>
+                    <th class="sticky left-12 bg-slate-50 z-10 text-left text-sm font-semibold text-slate-900">Name</th>
+                    <th class="text-left text-sm font-semibold text-slate-900">Enrollment No.</th>
+                    ${dates.map(date => `
+                        <th class="text-center text-sm font-semibold text-slate-900">
+                            <div class="flex items-center justify-center">
+                                ${formatDate(date)}
+                                ${isUserAdmin ? `<button class="delete-date-btn" data-date="${date}">🗑️</button>` : ''}
+                            </div>
+                        </th>`).join('')}
+                    <th class="text-center text-sm font-semibold text-slate-900">Total Present</th>
+                </tr>`;
+
+            tableBody.innerHTML = students.map((student, index) => {
+                let presentCount = dates.filter(date => attendanceData[date]?.[student.id] === 'P').length;
+                return `
+                    <tr class="even:bg-white odd:bg-slate-50">
+                        <td class="sticky left-0 z-10" style="background-color: inherit;">${index + 1}</td>
+                        <td class="sticky left-12 z-10" style="background-color: inherit;">${student.name}</td>
+                        <td class="text-slate-500">${student.id}</td>
+                        ${dates.map(date => `
+                            <td class="text-center"><div class="flex justify-center">${renderStatusButton(date, student.id)}</div></td>
+                        `).join('')}
+                        <td class="text-center font-semibold text-indigo-600">${presentCount} / ${dates.length}</td>
+                    </tr>`;
+            }).join('');
+            
+            if (isUserAdmin) {
+                attachAdminListeners();
+            }
+        }
+        
+        function renderStatusButton(date, studentId) {
+            const status = attendanceData[date]?.[studentId] || null;
+            let sClass = 'status-empty', sText = '-';
+            if (status === 'P') { sClass = 'status-p'; sText = 'P'; } 
+            else if (status === 'A') { sClass = 'status-a'; sText = 'A'; }
+            const editableClass = isUserAdmin ? 'editable' : '';
+            return `<div class="status-btn ${sClass} ${editableClass}" data-date="${date}" data-student-id="${studentId}">${sText}</div>`;
+        }
+        
+        function attachAdminListeners() {
+            document.querySelectorAll('.status-btn.editable').forEach(b => b.addEventListener('click', handleStatusClick));
+            document.querySelectorAll('.delete-date-btn').forEach(b => b.addEventListener('click', handleDeleteDateClick));
+        }
+        
+        function handleStatusClick(e) {
+            const { date, studentId } = e.currentTarget.dataset;
+            const currentStatus = attendanceData[date]?.[studentId] || null;
+            let nextStatus = 'P';
+            if (currentStatus === 'P') nextStatus = 'A';
+            else if (currentStatus === 'A') nextStatus = null;
+            if (!attendanceData[date]) attendanceData[date] = {};
+            if (nextStatus === null) delete attendanceData[date][studentId];
+            else attendanceData[date][studentId] = nextStatus;
+            saveAttendanceData();
+        }
+
+        function handleDeleteDateClick(e) {
+            const dateToDelete = e.currentTarget.dataset.date;
+            if (confirm(`Delete attendance for ${formatDate(dateToDelete)}?`)) {
+                delete attendanceData[dateToDelete];
+                saveAttendanceData();
+            }
+        }
+
+        // Event Listeners
+        loginBtn.addEventListener('click', () => loginModal.classList.remove('hidden'));
+        document.getElementById('cancelLoginBtn').addEventListener('click', () => loginModal.classList.add('hidden'));
+        document.getElementById('submitLoginBtn').addEventListener('click', () => {
+            const passwordInput = document.getElementById('passwordInput');
+            const loginError = document.getElementById('loginError');
+            if (passwordInput.value === 'chipmateadmin') {
+                isUserAdmin = true;
+                loginModal.classList.add('hidden');
+                passwordInput.value = '';
+                loginError.classList.add('hidden');
+                setupUI();
+            } else {
+                loginError.classList.remove('hidden');
+            }
+        });
+
+        document.getElementById('addDateBtn').addEventListener('click', () => dateModal.classList.remove('hidden'));
+        document.getElementById('cancelDateBtn').addEventListener('click', () => dateModal.classList.add('hidden'));
+        document.getElementById('saveDateBtn').addEventListener('click', () => {
+            const dateValue = document.getElementById('dateInput').value;
+            if (dateValue) {
+                if (!attendanceData[dateValue]) {
+                    attendanceData[dateValue] = {};
+                    saveAttendanceData();
+                } else alert("This date already exists.");
+                dateModal.classList.add('hidden');
+            }
+        });
+        
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const dates = Object.keys(attendanceData).sort();
+            let csvContent = "data:text/csv;charset=utf-8,";
+            const header = ["Sr. No.", "Name", "Enrollment No.", ...dates.map(d => formatDate(d))];
+            csvContent += header.join(",") + "\r\n";
+            students.forEach((student, index) => {
+                const row = [
+                    index + 1, `"${student.name}"`, student.id,
+                    ...dates.map(date => attendanceData[date]?.[student.id] || '')
+                ];
+                csvContent += row.join(",") + "\r\n";
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "ChipMate_Attendance.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        function formatDate(d) { return `${d.slice(8,10)}/${d.slice(5,7)}/${d.slice(2,4)}`; }
+        
+        // --- Initial Load ---
+        // This ensures the table with names is drawn on startup.
+        renderTable(); 
+        tableWrapper.classList.remove('hidden');
+        loadingDiv.classList.add('hidden');
+        initFirebase();
+    </script>
+</body>
+</html>
