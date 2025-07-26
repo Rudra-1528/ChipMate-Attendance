@@ -9,7 +9,7 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f8fafc; /* slate-50 */
+            background-color: #f8fafc;
         }
         .table-container {
             width: 100%;
@@ -76,18 +76,18 @@
         <!-- Controls -->
         <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
             <h2 class="text-xl font-semibold text-slate-700">Attendance Sheet</h2>
-            <div class="flex items-center gap-2">
-                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700">Admin Login</button>
+            <div id="controlsContainer" class="flex items-center gap-2">
+                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>Admin Login</button>
                 <div id="adminControls" class="flex items-center gap-2" style="display: none;">
+                    <button id="logoutBtn" class="bg-gray-500 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-gray-600">Logout</button>
+                    <button id="changePasswordBtn" class="bg-yellow-500 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-yellow-600">Change Password</button>
                     <button id="downloadBtn" class="bg-green-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-green-700">Download CSV</button>
                     <button id="addDateBtn" class="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-indigo-700">Add Date</button>
                 </div>
             </div>
         </div>
         
-        <div id="loading" class="text-center py-10"><p class="text-slate-500">Loading attendance data...</p></div>
-
-        <div id="tableWrapper" class="table-container bg-white rounded-2xl shadow-md border border-slate-200 hidden">
+        <div id="tableWrapper" class="table-container bg-white rounded-2xl shadow-md border border-slate-200">
             <table class="min-w-full divide-y divide-slate-200">
                 <thead id="tableHeader" class="bg-slate-50"></thead>
                 <tbody id="tableBody" class="divide-y divide-slate-200"></tbody>
@@ -120,10 +120,48 @@
         </div>
     </div>
 
+    <div id="passwordChangeModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+            <h3 class="text-xl font-semibold mb-4">Change Admin Password</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="currentPasswordInput" class="block text-sm font-medium text-slate-700">Current Password:</label>
+                    <input type="password" id="currentPasswordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+                </div>
+                <div>
+                    <label for="newPasswordInput" class="block text-sm font-medium text-slate-700">New Password:</label>
+                    <input type="password" id="newPasswordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+                </div>
+                <div>
+                    <label for="confirmPasswordInput" class="block text-sm font-medium text-slate-700">Confirm New Password:</label>
+                    <input type="password" id="confirmPasswordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+                </div>
+            </div>
+            <p id="passwordChangeError" class="text-red-500 text-sm mt-2 hidden"></p>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancelPasswordChangeBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancel</button>
+                <button id="savePasswordChangeBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Save Changes</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Confirmation Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+            <h3 class="text-xl font-semibold mb-4">Are you sure?</h3>
+            <p id="confirmMessage" class="text-slate-600 mb-6"></p>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="confirmCancelBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancel</button>
+                <button id="confirmOkBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Delete</button>
+            </div>
+        </div>
+    </div>
+
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "dummy", authDomain: "dummy.firebaseapp.com", projectId: "dummy" };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'chipmate-attendance-default';
@@ -131,6 +169,7 @@
 
         let app, auth, db;
         let isUserAdmin = false;
+        let adminPassword = "";
 
         const students = [
             { id: 7, name: "Arpit Kumar" }, { id: 10, name: "Bichitra Sharma" },
@@ -145,15 +184,22 @@
         
         let attendanceData = {};
 
-        const adminControls = document.getElementById('adminControls');
-        const loginBtn = document.getElementById('loginBtn');
+        // DOM Elements
+        const tableWrapper = document.getElementById('tableWrapper');
         const tableHeader = document.getElementById('tableHeader');
         const tableBody = document.getElementById('tableBody');
-        const loadingDiv = document.getElementById('loading');
-        const tableWrapper = document.getElementById('tableWrapper');
-        const dateModal = document.getElementById('dateModal');
+        const loginBtn = document.getElementById('loginBtn');
+        const adminControls = document.getElementById('adminControls');
         const loginModal = document.getElementById('loginModal');
+        const dateModal = document.getElementById('dateModal');
+        const passwordChangeModal = document.getElementById('passwordChangeModal');
+        const confirmModal = document.getElementById('confirmModal');
 
+        // --- Firestore Document References ---
+        const getCredentialsRef = () => doc(db, "artifacts", appId, "public/data/club/credentials");
+        const getAttendanceRef = () => doc(db, "artifacts", appId, "public/data/club/attendance");
+
+        // --- Firebase & Data Logic ---
         async function initFirebase() {
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
@@ -161,7 +207,7 @@
 
             onAuthStateChanged(auth, user => {
                 if (user) {
-                    loadAttendanceData();
+                    loadCredentialsAndData();
                 } else {
                     if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
                     else signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
@@ -169,23 +215,39 @@
             });
         }
 
+        async function loadCredentialsAndData() {
+            const credRef = getCredentialsRef();
+            try {
+                const credSnap = await getDoc(credRef);
+                if (credSnap.exists()) {
+                    adminPassword = credSnap.data().password;
+                } else {
+                    adminPassword = 'chipmateadmin';
+                    await setDoc(credRef, { password: adminPassword });
+                }
+                loginBtn.disabled = false;
+            } catch (error) {
+                console.error("Error loading credentials:", error);
+                loginBtn.textContent = "Login Disabled";
+            }
+            loadAttendanceData();
+        }
+
         function loadAttendanceData() {
-            const docRef = doc(db, "artifacts", appId, "public/data", "attendanceSheet");
+            const docRef = getAttendanceRef();
             onSnapshot(docRef, (docSnap) => {
                 attendanceData = docSnap.exists() ? docSnap.data().records || {} : {};
-                // This is the key fix: render the table every time data changes.
                 renderTable();
-                loadingDiv.classList.add('hidden');
-                tableWrapper.classList.remove('hidden');
             });
         }
 
         async function saveAttendanceData() {
             if (!isUserAdmin) return;
-            const docRef = doc(db, "artifacts", appId, "public/data", "attendanceSheet");
+            const docRef = getAttendanceRef();
             await setDoc(docRef, { records: attendanceData }, { merge: true });
         }
 
+        // --- UI Rendering ---
         function setupUI() {
             if (isUserAdmin) {
                 adminControls.style.display = 'flex';
@@ -194,7 +256,6 @@
                 adminControls.style.display = 'none';
                 loginBtn.style.display = 'block';
             }
-            // Re-render the table to show/hide admin controls like the delete button
             renderTable();
         }
 
@@ -228,10 +289,6 @@
                         <td class="text-center font-semibold text-indigo-600">${presentCount} / ${dates.length}</td>
                     </tr>`;
             }).join('');
-            
-            if (isUserAdmin) {
-                attachAdminListeners();
-            }
         }
         
         function renderStatusButton(date, studentId) {
@@ -243,13 +300,55 @@
             return `<div class="status-btn ${sClass} ${editableClass}" data-date="${date}" data-student-id="${studentId}">${sText}</div>`;
         }
         
-        function attachAdminListeners() {
-            document.querySelectorAll('.status-btn.editable').forEach(b => b.addEventListener('click', handleStatusClick));
-            document.querySelectorAll('.delete-date-btn').forEach(b => b.addEventListener('click', handleDeleteDateClick));
+        // --- Event Handling ---
+        function attachEventListeners() {
+            // Main control buttons
+            loginBtn.addEventListener('click', () => loginModal.classList.remove('hidden'));
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                isUserAdmin = false;
+                setupUI();
+            });
+            document.getElementById('addDateBtn').addEventListener('click', () => dateModal.classList.remove('hidden'));
+            document.getElementById('downloadBtn').addEventListener('click', handleDownload);
+            document.getElementById('changePasswordBtn').addEventListener('click', () => passwordChangeModal.classList.remove('hidden'));
+
+            // Modal buttons
+            document.getElementById('cancelLoginBtn').addEventListener('click', () => loginModal.classList.add('hidden'));
+            document.getElementById('submitLoginBtn').addEventListener('click', handleLogin);
+            document.getElementById('cancelDateBtn').addEventListener('click', () => dateModal.classList.add('hidden'));
+            document.getElementById('saveDateBtn').addEventListener('click', handleSaveDate);
+            document.getElementById('cancelPasswordChangeBtn').addEventListener('click', () => passwordChangeModal.classList.add('hidden'));
+            document.getElementById('savePasswordChangeBtn').addEventListener('click', handleSavePassword);
+            
+            // Confirmation Modal Buttons
+            document.getElementById('confirmCancelBtn').addEventListener('click', () => confirmModal.classList.add('hidden'));
+            document.getElementById('confirmOkBtn').addEventListener('click', (e) => {
+                const dateToDelete = e.currentTarget.dataset.date;
+                if (dateToDelete) {
+                    delete attendanceData[dateToDelete];
+                    saveAttendanceData();
+                }
+                confirmModal.classList.add('hidden');
+            });
+
+
+            // Table actions (event delegation on the whole table)
+            tableWrapper.addEventListener('click', (e) => {
+                if (!isUserAdmin) return;
+                const statusBtn = e.target.closest('.status-btn.editable');
+                const deleteBtn = e.target.closest('.delete-date-btn');
+
+                if (statusBtn) {
+                    handleStatusClick(statusBtn);
+                }
+                if (deleteBtn) {
+                    handleDeleteDateClick(deleteBtn);
+                }
+            });
         }
-        
-        function handleStatusClick(e) {
-            const { date, studentId } = e.currentTarget.dataset;
+
+        function handleStatusClick(button) {
+            const { date, studentId } = button.dataset;
             const currentStatus = attendanceData[date]?.[studentId] || null;
             let nextStatus = 'P';
             if (currentStatus === 'P') nextStatus = 'A';
@@ -257,24 +356,21 @@
             if (!attendanceData[date]) attendanceData[date] = {};
             if (nextStatus === null) delete attendanceData[date][studentId];
             else attendanceData[date][studentId] = nextStatus;
+            
             saveAttendanceData();
         }
 
-        function handleDeleteDateClick(e) {
-            const dateToDelete = e.currentTarget.dataset.date;
-            if (confirm(`Delete attendance for ${formatDate(dateToDelete)}?`)) {
-                delete attendanceData[dateToDelete];
-                saveAttendanceData();
-            }
+        function handleDeleteDateClick(button) {
+            const dateToDelete = button.dataset.date;
+            document.getElementById('confirmMessage').textContent = `Are you sure you want to delete the column for ${formatDate(dateToDelete)}? This action cannot be undone.`;
+            document.getElementById('confirmOkBtn').dataset.date = dateToDelete;
+            confirmModal.classList.remove('hidden');
         }
 
-        // Event Listeners
-        loginBtn.addEventListener('click', () => loginModal.classList.remove('hidden'));
-        document.getElementById('cancelLoginBtn').addEventListener('click', () => loginModal.classList.add('hidden'));
-        document.getElementById('submitLoginBtn').addEventListener('click', () => {
+        function handleLogin() {
             const passwordInput = document.getElementById('passwordInput');
             const loginError = document.getElementById('loginError');
-            if (passwordInput.value === 'chipmateadmin') {
+            if (passwordInput.value === adminPassword) {
                 isUserAdmin = true;
                 loginModal.classList.add('hidden');
                 passwordInput.value = '';
@@ -283,22 +379,63 @@
             } else {
                 loginError.classList.remove('hidden');
             }
-        });
+        }
 
-        document.getElementById('addDateBtn').addEventListener('click', () => dateModal.classList.remove('hidden'));
-        document.getElementById('cancelDateBtn').addEventListener('click', () => dateModal.classList.add('hidden'));
-        document.getElementById('saveDateBtn').addEventListener('click', () => {
+        function handleSaveDate() {
             const dateValue = document.getElementById('dateInput').value;
             if (dateValue) {
                 if (!attendanceData[dateValue]) {
                     attendanceData[dateValue] = {};
                     saveAttendanceData();
-                } else alert("This date already exists.");
+                } else {
+                    // Using a custom message box instead of alert
+                    const msgBox = document.createElement('div');
+                    msgBox.textContent = 'This date already exists.';
+                    msgBox.className = 'fixed top-5 right-5 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg';
+                    document.body.appendChild(msgBox);
+                    setTimeout(() => msgBox.remove(), 3000);
+                }
                 dateModal.classList.add('hidden');
             }
-        });
+        }
+
+        async function handleSavePassword() {
+            const currentPasswordInput = document.getElementById('currentPasswordInput');
+            const newPasswordInput = document.getElementById('newPasswordInput');
+            const confirmPasswordInput = document.getElementById('confirmPasswordInput');
+            const errorMsg = document.getElementById('passwordChangeError');
+
+            errorMsg.classList.add('hidden');
+
+            if (currentPasswordInput.value !== adminPassword) {
+                errorMsg.textContent = "Current password is not correct.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            if (!newPasswordInput.value || newPasswordInput.value !== confirmPasswordInput.value) {
+                errorMsg.textContent = "New passwords do not match or are empty.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            const newPassword = newPasswordInput.value;
+            const credRef = getCredentialsRef();
+            try {
+                await setDoc(credRef, { password: newPassword });
+                adminPassword = newPassword;
+                alert("Password changed successfully!");
+                passwordChangeModal.classList.add('hidden');
+                currentPasswordInput.value = '';
+                newPasswordInput.value = '';
+                confirmPasswordInput.value = '';
+            } catch (e) {
+                errorMsg.textContent = "Failed to save new password. Please try again.";
+                errorMsg.classList.remove('hidden');
+                console.error("Password change error:", e);
+            }
+        }
         
-        document.getElementById('downloadBtn').addEventListener('click', () => {
+        function handleDownload() {
             const dates = Object.keys(attendanceData).sort();
             let csvContent = "data:text/csv;charset=utf-8,";
             const header = ["Sr. No.", "Name", "Enrollment No.", ...dates.map(d => formatDate(d))];
@@ -317,15 +454,13 @@
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-        });
+        }
 
         function formatDate(d) { return `${d.slice(8,10)}/${d.slice(5,7)}/${d.slice(2,4)}`; }
         
         // --- Initial Load ---
-        // This ensures the table with names is drawn on startup.
         renderTable(); 
-        tableWrapper.classList.remove('hidden');
-        loadingDiv.classList.add('hidden');
+        attachEventListeners();
         initFirebase();
     </script>
 </body>
