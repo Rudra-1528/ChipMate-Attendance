@@ -79,6 +79,7 @@
             <div class="flex items-center gap-2">
                  <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700">Admin Login</button>
                 <div id="adminControls" class="flex items-center gap-2" style="display: none;">
+                    <button id="changePasswordBtn" class="bg-red-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-red-700">Change Password</button>
                     <button id="downloadBtn" class="bg-green-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-green-700">Download CSV</button>
                     <button id="addDateBtn" class="bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-indigo-700">Add Date</button>
                 </div>
@@ -120,10 +121,35 @@
         </div>
     </div>
 
+    <div id="passwordChangeModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
+            <h3 class="text-xl font-semibold mb-4">Change Admin Password</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="currentPasswordInput" class="block text-sm font-medium text-slate-700">Current Password:</label>
+                    <input type="password" id="currentPasswordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+                </div>
+                <div>
+                    <label for="newPasswordInput" class="block text-sm font-medium text-slate-700">New Password:</label>
+                    <input type="password" id="newPasswordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+                </div>
+                <div>
+                    <label for="confirmPasswordInput" class="block text-sm font-medium text-slate-700">Confirm New Password:</label>
+                    <input type="password" id="confirmPasswordInput" class="mt-1 w-full p-2 border border-slate-300 rounded-lg">
+                </div>
+            </div>
+            <p id="passwordChangeError" class="text-red-500 text-sm mt-2 hidden"></p>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button id="cancelPasswordChangeBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">Cancel</button>
+                <button id="savePasswordChangeBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "dummy", authDomain: "dummy.firebaseapp.com", projectId: "dummy" };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'chipmate-attendance-default';
@@ -131,6 +157,7 @@
 
         let app, auth, db;
         let isUserAdmin = false;
+        let adminPassword = "";
 
         const students = [
             { id: 7, name: "Arpit Kumar" }, { id: 10, name: "Bichitra Sharma" },
@@ -153,6 +180,7 @@
         const tableWrapper = document.getElementById('tableWrapper');
         const dateModal = document.getElementById('dateModal');
         const loginModal = document.getElementById('loginModal');
+        const passwordChangeModal = document.getElementById('passwordChangeModal');
 
         async function initFirebase() {
             app = initializeApp(firebaseConfig);
@@ -161,7 +189,7 @@
 
             onAuthStateChanged(auth, user => {
                 if (user) {
-                    loadAttendanceData();
+                    loadCredentialsAndData();
                 } else {
                     if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
                     else signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
@@ -169,11 +197,23 @@
             });
         }
 
+        async function loadCredentialsAndData() {
+            const credRef = doc(db, "artifacts", appId, "public/data", "credentials");
+            const credSnap = await getDoc(credRef);
+            if (credSnap.exists()) {
+                adminPassword = credSnap.data().password;
+            } else {
+                // Set a default password if none exists
+                adminPassword = 'chipmateadmin';
+                await setDoc(credRef, { password: adminPassword });
+            }
+            loadAttendanceData();
+        }
+
         function loadAttendanceData() {
             const docRef = doc(db, "artifacts", appId, "public/data", "attendanceSheet");
             onSnapshot(docRef, (docSnap) => {
                 attendanceData = docSnap.exists() ? docSnap.data().records || {} : {};
-                // This is the key fix: render the table every time data changes.
                 renderTable();
                 loadingDiv.classList.add('hidden');
                 tableWrapper.classList.remove('hidden');
@@ -194,7 +234,6 @@
                 adminControls.style.display = 'none';
                 loginBtn.style.display = 'block';
             }
-            // Re-render the table to show/hide admin controls like the delete button
             renderTable();
         }
 
@@ -229,9 +268,7 @@
                     </tr>`;
             }).join('');
             
-            if (isUserAdmin) {
-                attachAdminListeners();
-            }
+            if (isUserAdmin) attachAdminListeners();
         }
         
         function renderStatusButton(date, studentId) {
@@ -274,7 +311,7 @@
         document.getElementById('submitLoginBtn').addEventListener('click', () => {
             const passwordInput = document.getElementById('passwordInput');
             const loginError = document.getElementById('loginError');
-            if (passwordInput.value === 'chipmateadmin') {
+            if (passwordInput.value === adminPassword) {
                 isUserAdmin = true;
                 loginModal.classList.add('hidden');
                 passwordInput.value = '';
@@ -319,10 +356,46 @@
             document.body.removeChild(link);
         });
 
+        document.getElementById('changePasswordBtn').addEventListener('click', () => passwordChangeModal.classList.remove('hidden'));
+        document.getElementById('cancelPasswordChangeBtn').addEventListener('click', () => passwordChangeModal.classList.add('hidden'));
+        document.getElementById('savePasswordChangeBtn').addEventListener('click', async () => {
+            const currentPasswordInput = document.getElementById('currentPasswordInput');
+            const newPasswordInput = document.getElementById('newPasswordInput');
+            const confirmPasswordInput = document.getElementById('confirmPasswordInput');
+            const errorMsg = document.getElementById('passwordChangeError');
+
+            errorMsg.classList.add('hidden');
+
+            if (currentPasswordInput.value !== adminPassword) {
+                errorMsg.textContent = "Current password is not correct.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            if (!newPasswordInput.value || newPasswordInput.value !== confirmPasswordInput.value) {
+                errorMsg.textContent = "New passwords do not match or are empty.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            const newPassword = newPasswordInput.value;
+            const credRef = doc(db, "artifacts", appId, "public/data", "credentials");
+            try {
+                await setDoc(credRef, { password: newPassword });
+                adminPassword = newPassword; // Update local password
+                alert("Password changed successfully!");
+                passwordChangeModal.classList.add('hidden');
+                currentPasswordInput.value = '';
+                newPasswordInput.value = '';
+                confirmPasswordInput.value = '';
+            } catch (e) {
+                errorMsg.textContent = "Failed to save new password. Please try again.";
+                errorMsg.classList.remove('hidden');
+                console.error("Password change error:", e);
+            }
+        });
+
         function formatDate(d) { return `${d.slice(8,10)}/${d.slice(5,7)}/${d.slice(2,4)}`; }
         
-        // --- Initial Load ---
-        // This ensures the table with names is drawn on startup.
         renderTable(); 
         tableWrapper.classList.remove('hidden');
         loadingDiv.classList.add('hidden');
