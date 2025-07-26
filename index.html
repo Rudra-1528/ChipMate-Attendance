@@ -170,6 +170,7 @@
         let app, auth, db;
         let isUserAdmin = false;
         let adminPassword = "";
+        let listenersAttached = false; // Flag to ensure listeners are attached only once
 
         const students = [
             { id: 7, name: "Arpit Kumar" }, { id: 10, name: "Bichitra Sharma" },
@@ -208,6 +209,10 @@
             onAuthStateChanged(auth, user => {
                 if (user) {
                     loadCredentialsAndData();
+                    if (!listenersAttached) {
+                        attachEventListeners();
+                        listenersAttached = true;
+                    }
                 } else {
                     if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
                     else signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
@@ -388,7 +393,6 @@
                     attendanceData[dateValue] = {};
                     saveAttendanceData();
                 } else {
-                    // Using a custom message box instead of alert
                     const msgBox = document.createElement('div');
                     msgBox.textContent = 'This date already exists.';
                     msgBox.className = 'fixed top-5 right-5 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg';
@@ -460,7 +464,6 @@
         
         // --- Initial Load ---
         renderTable(); 
-        attachEventListeners();
         initFirebase();
     </script>
 </body>
