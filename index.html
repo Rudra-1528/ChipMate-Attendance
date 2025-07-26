@@ -159,12 +159,20 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "dummy", authDomain: "dummy.firebaseapp.com", projectId: "dummy" };
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'chipmate-attendance-default';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // Your personal Firebase configuration
+        const firebaseConfig = {
+          apiKey: "AIzaSyBJTReUKxb02bbni5miY6cASZwR-WC3-BM",
+          authDomain: "chipmate-attendance-tracker.firebaseapp.com",
+          projectId: "chipmate-attendance-tracker",
+          storageBucket: "chipmate-attendance-tracker.firebasestorage.app",
+          messagingSenderId: "371854560461",
+          appId: "1:371854560461:web:41c6030cc44676c1672d84"
+        };
+        
+        const appId = firebaseConfig.projectId;
 
         let app, auth, db;
         let isUserAdmin = false;
@@ -209,18 +217,13 @@
 
             onAuthStateChanged(auth, user => {
                 if (user) {
-                    // This is the critical fix: only attach listeners and load data AFTER auth is confirmed.
                     if (!listenersAttached) {
                         attachEventListeners();
                         listenersAttached = true;
                     }
                     loadCredentialsAndData();
                 } else {
-                    if (initialAuthToken) {
-                        signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
-                    } else {
-                        signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
-                    }
+                    signInAnonymously(auth).catch(e => console.error("Anonymous sign-in failed:", e));
                 }
             });
         }
