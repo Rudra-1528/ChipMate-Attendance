@@ -169,6 +169,7 @@
         let app, auth, db;
         let isUserAdmin = false;
         let adminPassword = "";
+        let listenersAttached = false;
 
         const students = [
             { id: 7, name: "Arpit Kumar" }, { id: 10, name: "Bichitra Sharma" },
@@ -204,11 +205,14 @@
             db = getFirestore(app);
             auth = getAuth(app);
             
-            attachEventListeners(); // Attach all listeners once
             renderTable(); // Initial render with no data
 
             onAuthStateChanged(auth, user => {
                 if (user) {
+                    if (!listenersAttached) {
+                        attachEventListeners();
+                        listenersAttached = true;
+                    }
                     loadCredentialsAndData();
                 } else {
                     if (initialAuthToken) signInWithCustomToken(auth, initialAuthToken).catch(e => console.error("Custom token sign-in failed:", e));
@@ -219,8 +223,10 @@
 
         async function loadCredentialsAndData() {
             const credRef = getCredentialsRef();
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Database connection timed out")), 10000));
+            
             try {
-                const credSnap = await getDoc(credRef);
+                const credSnap = await Promise.race([getDoc(credRef), timeoutPromise]);
                 if (credSnap.exists()) {
                     adminPassword = credSnap.data().password;
                 } else {
@@ -231,7 +237,8 @@
                 loginBtn.textContent = "Admin Login";
             } catch (error) {
                 console.error("Error loading credentials:", error);
-                loginBtn.textContent = "Login Disabled";
+                loginBtn.textContent = "Login Failed";
+                loginBtn.title = error.message;
             }
             loadAttendanceData();
         }
@@ -241,6 +248,8 @@
             onSnapshot(docRef, (docSnap) => {
                 attendanceData = docSnap.exists() ? docSnap.data().records || {} : {};
                 renderTable();
+            }, (error) => {
+                console.error("Error fetching attendance data:", error);
             });
         }
 
