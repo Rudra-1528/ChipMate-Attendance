@@ -237,7 +237,7 @@
                 if (credSnap.exists()) {
                     adminPassword = credSnap.data().password;
                 } else {
-                    adminPassword = 'chipmateadmin';
+                    adminPassword = 'chipmate';
                     await setDoc(credRef, { password: adminPassword });
                 }
                 loginBtn.disabled = false;
