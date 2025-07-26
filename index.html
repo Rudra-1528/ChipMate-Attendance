@@ -77,7 +77,7 @@
         <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
             <h2 class="text-xl font-semibold text-slate-700">Attendance Sheet</h2>
             <div class="flex items-center gap-2">
-                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700">Admin Login</button>
+                 <button id="loginBtn" class="bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed" disabled>Admin Login</button>
                 <div id="adminControls" class="flex items-center gap-2" style="display: none;">
                     <button id="changePasswordBtn" class="bg-red-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-red-700">Change Password</button>
                     <button id="downloadBtn" class="bg-green-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm hover:bg-green-700">Download CSV</button>
@@ -199,13 +199,19 @@
 
         async function loadCredentialsAndData() {
             const credRef = doc(db, "artifacts", appId, "public/data", "credentials");
-            const credSnap = await getDoc(credRef);
-            if (credSnap.exists()) {
-                adminPassword = credSnap.data().password;
-            } else {
-                // Set a default password if none exists
-                adminPassword = 'chipmateadmin';
-                await setDoc(credRef, { password: adminPassword });
+            try {
+                const credSnap = await getDoc(credRef);
+                if (credSnap.exists()) {
+                    adminPassword = credSnap.data().password;
+                } else {
+                    adminPassword = 'chipmateadmin';
+                    await setDoc(credRef, { password: adminPassword });
+                }
+                // Enable login button only after password is loaded
+                loginBtn.disabled = false;
+            } catch (error) {
+                console.error("Error loading credentials:", error);
+                // Keep login button disabled if credentials fail to load
             }
             loadAttendanceData();
         }
